@@ -6,6 +6,9 @@ A Google Apps Script that mirrors "Busy" events from your personal Google Calend
 
 The script runs entirely under your **personal** Google account. It reads events from your primary personal calendar and creates matching "Busy" events on a secondary calendar called **Work Busy Sync**. Each Busy event invites your work email as a guest, so it appears on your work calendar automatically.
 
+**Initial sync behavior:**
+On the very first run, the script only looks back **24 hours**. Existing events older than that will not be mirrored. After the first run a sync token is saved, and all subsequent runs only process incremental changes (new, updated, or cancelled events) from that point forward. If you want older events to be covered, edit them after installing the script so they appear as changes.
+
 **Rules:**
 - Events marked "Free" (transparent) are ignored — only "Busy" (opaque) events are mirrored.
 - Recurring events are mirrored as a single recurring Busy event (same RRULE), not one invite per instance.
