@@ -10,6 +10,9 @@
  * - Only events with at least one guest are considered.
  * - A guest is "external" if their email doesn't end in one of
  *   CONFIG.internalDomains.
+ * - Guests listed in CONFIG.excludeEmailAddresses are ignored entirely
+ *   (e.g. note-taking bots like assistant@gong.io that get added
+ *   to otherwise-internal meetings).
  * - Events already set to the external color are left alone.
  *
  * SETUP:
@@ -30,12 +33,21 @@
 const CONFIG = {
   calendarId: 'you@yourwork.com',        // <-- CHANGE THIS
   internalDomains: ['yourwork.com'],     // <-- CHANGE THIS
+  excludeEmailAddresses: [               // <-- CHANGE THIS (optional)
+    'assistant@gong.io',
+  ],
   externalColor: CalendarApp.EventColor.ORANGE,
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
 function isInternal(email) {
   return CONFIG.internalDomains.some(domain => email.endsWith('@' + domain));
+}
+
+function isExcluded(email) {
+  return CONFIG.excludeEmailAddresses.some(
+    excluded => excluded.toLowerCase() === email.toLowerCase()
+  );
 }
 
 function colorExternalMeetings() {
@@ -47,7 +59,7 @@ function colorExternalMeetings() {
   let updated = 0;
 
   for (const event of events) {
-    const guests = event.getGuestList();
+    const guests = event.getGuestList().filter(g => !isExcluded(g.getEmail()));
 
     if (guests.length === 0) continue;
 

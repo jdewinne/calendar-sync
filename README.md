@@ -58,6 +58,7 @@ The script runs under your **work** Google account. It scans the next 7 days of 
 
 **Rules:**
 - A guest counts as external if their email domain isn't in `CONFIG.internalDomains`.
+- Guests listed in `CONFIG.excludeEmailAddresses` are ignored entirely (e.g. note-taking bots like `assistant@gong.io` that get added to otherwise-internal meetings).
 - Only events in the next 7 days are checked on each run.
 - Runs automatically every morning at 7am via a time-based trigger.
 
@@ -65,7 +66,7 @@ The script runs under your **work** Google account. It scans the next 7 days of 
 
 1. Go to [script.google.com](https://script.google.com) and create a new project under your **work** Google account (or add this file to an existing project).
 2. Paste the contents of `ColorExternalMeetings.gs` into the editor.
-3. Change `CONFIG.calendarId` and `CONFIG.internalDomains` at the top of the file to your work email and internal domain(s).
+3. Change `CONFIG.calendarId` and `CONFIG.internalDomains` at the top of the file to your work email and internal domain(s). Optionally add emails to `CONFIG.excludeEmailAddresses` to ignore bots/note-takers.
 4. Add the **Google Calendar API** service:
    - Click **Services** (the `+` icon in the left sidebar).
    - Select **Google Calendar API** and click **Add**.
