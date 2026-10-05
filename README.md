@@ -4,6 +4,7 @@ Google Apps Scripts for keeping a work Google Calendar in sync and readable:
 
 - **`BusySync.gs`** — mirrors "Busy" events from your personal calendar to your work calendar, without exposing event details.
 - **`ColorExternalMeetings.gs`** — color codes meetings on your work calendar that include external attendees, so they stand out.
+- **`OfwSync.gs`** — mirrors events from your OurFamilyWizard (OFW) account into a Google Calendar called "OFW", keeping updates and deletions in sync.
 
 ## Busy sync (`BusySync.gs`)
 
@@ -79,3 +80,50 @@ The script runs under your **work** Google account. It scans the next 7 days of 
 |---|---|
 | `colorExternalMeetings()` | Scans the next 7 days and colors meetings that include external attendees. |
 | `createDailyTrigger()` | Sets up a time-based trigger to run `colorExternalMeetings()` daily at 7am. |
+
+## OFW sync (`OfwSync.gs`)
+
+> [!WARNING]
+> OurFamilyWizard has **no public/documented API**. This script logs in with your real OFW username + password (via OFW's internal web login form) and calls OFW's internal, undocumented calendar endpoints — the same technique used by the open-source [chrischall/ofw-mcp](https://github.com/chrischall/ofw-mcp) project, which this script's request shapes were derived from. OFW's Terms of Service say users may not "obtain or attempt to obtain any materials or information through any means not intentionally made available," and OFW is a court-of-record platform. Only run this against your own OFW account. This script is **read-only against OFW** — it never creates, edits, or deletes anything on OFW, it only reads your calendar and writes to a Google Calendar under your own Google account. You are solely responsible for complying with OFW's Terms of Service and for any consequences; this is not legal advice. OFW's internal endpoints can change without notice, which would break this script — see `debugFetchRaw()` below.
+
+### How it works
+
+The script logs into OFW (capturing a session cookie, then posting the login form to get a bearer token) and fetches a configurable date window of calendar events from OFW's internal `/pub/v1/calendar/detailed` endpoint. It reconciles that against a Google Calendar called **OFW** under this Google account:
+
+- New OFW events are created on the Google Calendar.
+- Changed OFW events are deleted and recreated on the Google Calendar (simplest way to handle all-day/timed and multi-day differences correctly).
+- OFW events no longer present in the fetched window are deleted from the Google Calendar.
+- Unchanged events (same content hash) are left alone.
+
+**Sync window:** Each run fetches `CONFIG.PAST_DAYS` behind and `CONFIG.FUTURE_DAYS` ahead of today (default: 90 days back, 395 days forward) — OFW's API requires an explicit date range, there's no "list everything" option. An event outside that window looks identical to a deleted one, so widen the window if you need a longer horizon, or temporarily set `PAST_DAYS` very high for a one-time historical backfill.
+
+**Credential storage:** Apps Script has no secret manager that works for an unattended time-triggered script (the password has to be readable by the script itself when the trigger fires, which rules out real encryption — the decryption key would have to sit right next to the ciphertext). Credentials are stored in Script Properties: encrypted at rest by Google, and visible only to someone who already has edit access to this Apps Script project. Credentials are never written into the source file — see Setup step 3 below.
+
+### Setup (first time)
+
+1. Go to [script.google.com](https://script.google.com) and create a new project under the Google account that should own the "OFW" calendar.
+2. Paste the contents of `OfwSync.gs` into the editor. Adjust `CONFIG` at the top if you want a different calendar name, sync interval, or date window.
+3. Store your OFW credentials (one-time):
+   - Temporarily add this function anywhere in the file:
+     ```js
+     function _setupOfwCredentialsOnce() {
+       setOfwCredentials('your-ofw-login-email@example.com', 'your-ofw-password');
+     }
+     ```
+   - Select `_setupOfwCredentialsOnce` in the function dropdown and click **Run**. You'll be prompted to authorize the script.
+   - Delete that function (and your password) from the file and save. The credentials now live only in Script Properties.
+4. Run `syncOfwToCalendar()` once manually to do a first sync.
+5. Run `createTrigger()` once to schedule automatic syncing (every `CONFIG.SYNC_INTERVAL_HOURS` hours; default 24). Safe to re-run at any time; it removes duplicate triggers automatically.
+6. If a sync ever throws a parsing error, run `debugFetchRaw()` and check the logged JSON — OFW's internal API shape may have drifted from what the script expects.
+
+### Available functions
+
+| Function | Description |
+|---|---|
+| `setOfwCredentials(username, password)` | One-time credential setup — see Setup step 3. |
+| `clearOfwCredentials()` | Removes stored OFW credentials and the cached auth token. |
+| `syncOfwToCalendar()` | Main sync function — mirrors OFW calendar events to the "OFW" Google Calendar. |
+| `createTrigger()` | Schedules `syncOfwToCalendar()` every `CONFIG.SYNC_INTERVAL_HOURS` hours. |
+| `removeTrigger()` | Removes the time-based trigger (pauses automatic syncing). |
+| `resetAndCleanup()` | Deletes all synced OFW events and clears sync state (keeps credentials) for a clean restart. |
+| `debugFetchRaw()` | Logs the raw JSON OFW returns, for diagnosing a parsing error. |
