@@ -91,6 +91,13 @@ const OFW_PROTOCOL_HEADERS = {
 const OFW_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;   // OFW doesn't return an expiry; synthesize 6h like ofw-mcp does
 const OFW_TOKEN_SKEW_MS = 5 * 60 * 1000;
 
+// calendarItems is a mixed feed; each item has a `type`. These are not OFW
+// events of the account holder's own: JOURNAL (per-day entry counts) and
+// TRANSITION (custody handoffs) have no title/end date, and CONNECTED_EVENT
+// is an event from a calendar connected to OFW (mirroring it back would
+// duplicate events that already live in Google Calendar).
+const OFW_SKIP_ITEM_TYPES = { JOURNAL: true, TRANSITION: true, CONNECTED_EVENT: true };
+
 const USERNAME_PROP = 'OFW_USERNAME';
 const PASSWORD_PROP = 'OFW_PASSWORD';
 const TOKEN_PROP = 'OFW_TOKEN';
@@ -153,9 +160,14 @@ function syncOfwToCalendar() {
   }
 
   const seenIds = {};
+  const skippedByType = {};
   let created = 0, updated = 0, unchanged = 0, deleted = 0;
 
   events.forEach(function (ev) {
+    if (ev.type && OFW_SKIP_ITEM_TYPES[ev.type]) {
+      skippedByType[ev.type] = (skippedByType[ev.type] || 0) + 1;
+      return;
+    }
     const id = ofwEventId(ev);
     if (!id) return;
     seenIds[id] = true;
@@ -177,7 +189,8 @@ function syncOfwToCalendar() {
 
   Logger.log('OFW sync complete (' + startDate + ' to ' + endDate + '): ' +
     created + ' created, ' + updated + ' updated, ' + unchanged +
-    ' unchanged, ' + deleted + ' deleted.');
+    ' unchanged, ' + deleted + ' deleted. Skipped non-event items: ' +
+    (JSON.stringify(skippedByType) || '{}') + '.');
 }
 
 /**
@@ -227,7 +240,8 @@ function removeTrigger() {
 }
 
 /**
- * Logs the raw JSON OFW returns for the configured date window, truncated.
+ * Logs the raw, unparsed JSON OFW returns for a 7-days-back / 30-days-forward
+ * window, split into numbered chunks.
  * Use this to diagnose a parsing error if OFW's internal API shape has
  * drifted from what extractEventFields() expects.
  */
@@ -244,8 +258,14 @@ function debugFetchRaw() {
     }),
     muteHttpExceptions: true
   });
-  Logger.log('HTTP ' + resp.getResponseCode());
-  Logger.log(resp.getContentText().substring(0, 4000));
+  const body = resp.getContentText();
+  Logger.log('HTTP ' + resp.getResponseCode() + ', ' + body.length + ' characters');
+  // Logged in chunks: the execution log truncates very long single entries.
+  const CHUNK = 4000;
+  for (let i = 0; i < body.length; i += CHUNK) {
+    Logger.log('[part ' + (i / CHUNK + 1) + '/' + Math.ceil(body.length / CHUNK) + '] ' +
+      body.substring(i, i + CHUNK));
+  }
 }
 
 // ─── OFW auth ─────────────────────────────────────────────────────────────
@@ -426,7 +446,8 @@ function extractEventFields(ev) {
   const startRaw = extractDateTimeRaw(ev.startDate) || ev.startDateTime || ev.start;
   const endRaw = extractDateTimeRaw(ev.endDate) || ev.endDateTime || ev.end;
   if (!startRaw || !endRaw) {
-    throw new Error('OFW event "' + (ev.title || ofwEventId(ev)) + '" is missing a start or end date. Run debugFetchRaw() to inspect.');
+    throw new Error('OFW item "' + (ev.title || ofwEventId(ev)) + '" (type ' + ev.type +
+      ', fields: ' + Object.keys(ev).join(', ') + ') is missing a start or end date. Run debugFetchRaw() to inspect.');
   }
   return {
     title: ev.title || '(OFW event)',
