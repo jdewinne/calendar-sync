@@ -358,6 +358,8 @@ function fetchOfwEvents(token, startDate, endDate) {
 
 function normalizeEventList(data) {
   if (Array.isArray(data)) return data;
+  // /pub/v1/calendar/detailed returns {calendarItems: [...], guardianData: ...}
+  if (data && Array.isArray(data.calendarItems)) return data.calendarItems;
   if (data && Array.isArray(data.events)) return data.events;
   if (data && Array.isArray(data.items)) return data.items;
   if (data && Array.isArray(data.data)) return data.data;
